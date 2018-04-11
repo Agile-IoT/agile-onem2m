@@ -12,4 +12,5 @@ rocker
 nb*
 target
 /bin/
-
+.idea
+.DS_Store
