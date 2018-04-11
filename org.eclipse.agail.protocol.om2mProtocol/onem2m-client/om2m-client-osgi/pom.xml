@@ -1,0 +1,58 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.srcsolution.things.onem2m-client</groupId>
+    <artifactId>om2m-client-osgi</artifactId>
+
+    <name>OM2M OSGI Client</name>
+
+    <parent>
+        <groupId>org.eclipse.agail.protocol.om2m</groupId>
+        <artifactId>om2m-protocol-parent</artifactId>
+        <version>1.0.0</version>
+        <relativePath>../../om2m-protocol-parent/pom.xml</relativePath>
+    </parent>
+
+    <packaging>jar</packaging>
+
+    <repositories>
+        <repository>
+            <id>local-dbus</id>
+            <url>file://${basedir}/../../../deps</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.srcsolution.things.onem2m-client</groupId>
+            <artifactId>onem2m-client-core</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+
+        <!-- OM2M -->
+        <dependency>
+            <groupId>org.eclipse.om2m</groupId>
+            <artifactId>org.eclipse.om2m.commons</artifactId>
+            <version>${om2m.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.om2m</groupId>
+            <artifactId>org.eclipse.om2m.core.service</artifactId>
+            <version>${om2m.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.om2m</groupId>
+            <artifactId>org.eclipse.om2m.interworking.service</artifactId>
+            <version>${om2m.version}</version>
+        </dependency>
+
+        <!-- TEST -->
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>

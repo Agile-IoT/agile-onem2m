@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/agile-dbus-java-interface/agile-interfaces.iml" filepath="$PROJECT_DIR$/agile-dbus-java-interface/agile-interfaces.iml" />
+      <module fileurl="file://$PROJECT_DIR$/org.eclipse.agail.protocol.om2mProtocol/agile-om2m-protocol.iml" filepath="$PROJECT_DIR$/org.eclipse.agail.protocol.om2mProtocol/agile-om2m-protocol.iml" />
+      <module fileurl="file://$PROJECT_DIR$/onem2m-client/om2m-client-osgi/om2m-client-osgi.iml" filepath="$PROJECT_DIR$/onem2m-client/om2m-client-osgi/om2m-client-osgi.iml" />
+      <module fileurl="file://$PROJECT_DIR$/om2m-protocol-parent/om2m-protocol-parent.iml" filepath="$PROJECT_DIR$/om2m-protocol-parent/om2m-protocol-parent.iml" />
+      <module fileurl="file://$PROJECT_DIR$/onem2m-client/onem2m-client.iml" filepath="$PROJECT_DIR$/onem2m-client/onem2m-client.iml" />
+      <module fileurl="file://$PROJECT_DIR$/onem2m-client/onem2m-client-core/onem2m-client-core.iml" filepath="$PROJECT_DIR$/onem2m-client/onem2m-client-core/onem2m-client-core.iml" />
+      <module fileurl="file://$PROJECT_DIR$/onem2m-client/onem2m-client-http/onem2m-client-http.iml" filepath="$PROJECT_DIR$/onem2m-client/onem2m-client-http/onem2m-client-http.iml" />
+      <module fileurl="file://$PROJECT_DIR$/onem2m-resource-mapper/onem2m-resource-mapper.iml" filepath="$PROJECT_DIR$/onem2m-resource-mapper/onem2m-resource-mapper.iml" />
+      <module fileurl="file://$PROJECT_DIR$/things.iml" filepath="$PROJECT_DIR$/things.iml" />
+    </modules>
+  </component>
+</project>

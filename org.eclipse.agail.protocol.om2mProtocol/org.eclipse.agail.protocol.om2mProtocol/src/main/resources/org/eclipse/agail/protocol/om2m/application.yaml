@@ -1,0 +1,39 @@
+ipe:
+#  name: one-ipe
+  keep_alive: 300  # in seconds
+  resource: # related application oneM2M root resource
+    app_id: "central-node"
+    app_name: "central-node"
+    poa: "http://localhost:8095/agile-om2m"
+    content_info: application/json
+    mapper:
+      queue_size: 288   # message queue size
+  server:   # listening server  (optional)
+    http: 
+      port: 8095
+      path: "agile-om2m"
+    https:
+      port: 4395
+  remote:   # remote oneM2M node to access (optional, standalone mode, no node)
+    url: "http://localhost:8181"
+    id: "central-node"
+    login: "admin"
+    password: "admin"
+  device:   # device management
+    enabled: false
+    source: default   # default, fx30
+    link: cse   # cse, ae
+  log:  # logging details
+    level: DEBUG
+    console: true
+    path: ./logs
+#    file:
+#    root:
+#      level:
+
+#http:
+#  proxyHost:
+#  proxyPort:
+#  proxyScheme:
+
+
