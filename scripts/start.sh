@@ -78,7 +78,7 @@ if [ $MODULE = 'all' ] || [ $MODULE = 'om2m' ]; then
   cd om2m/ && sh service.sh && cd ../
   sleep 60
   ./scripts/stop.sh "protocol.om2m"
-  java -cp org.eclipse.agail.protocol.om2mProtocol/target/agile-om2m-protocol-1.0.0-jar-with-dependencies.jar -Djava.library.path=deps:deps/lib org.eclipse.agail.protocol.om2m.Om2mProtocol &
+  java -cp org.eclipse.agail.protocol.ONEM2M/target/agile-om2m-protocol-1.0.0-jar-with-dependencies.jar -Djava.library.path=deps:deps/lib org.eclipse.agail.protocol.om2m.OneM2MProtocol &
   
   echo "Started AGILE om2m protocol"
 fi
