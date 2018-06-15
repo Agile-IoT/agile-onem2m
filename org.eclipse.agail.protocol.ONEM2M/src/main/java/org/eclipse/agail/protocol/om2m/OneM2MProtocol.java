@@ -383,13 +383,20 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
 
     @Override
     public void Write(String deviceAddress, Map<String, String> profile, byte[] payload) throws DBusException {
-        Thing thing = new Thing();
+        String resourceMapperApplicationId = resourceMapperIdByDeviceAddress.get(deviceAddress);
+        ResourceMapper resourceMapper = resourceMappersByApplicationId.get(resourceMapperApplicationId);
+        Thing thing = resourceMapper.read(deviceAddress);
+
         try {
-            JsonNode operationInstance = this.getOperationInstance(thing);
+            String ipeName = profile.get("ipe");
+            ipeName = ipeName == null || ipeName.isEmpty() ? "fake" : ipeName;
+
+            JsonNode operationInstance = this.getOperationInstance(thing, ipeName);
             ContentConverter converter = this.getContentConverter(operationInstance);
             Map<String, Object> con = converter.deserialize(operationInstance.get("con").asText());
-            OperationContent operation = (OperationContent) con.get(profile.get("operation"));
-            URIBuilder url = new URIBuilder("http://localhost:8181/~/middle-node/middle-node/" + operation.getUrl());
+            OperationContent operation = (OperationContent) con.get(profile.get("operation").toUpperCase());
+            LOGGER.debug("OP: {}", operation.getUrl());
+            URIBuilder url = new URIBuilder("http://localhost:8181/~" + operation.getUrl());
 
             LOGGER.debug("Operation URL: {}", url.toString());
             url.addParameter("level", Integer.parseInt(new String(payload)) + "");
@@ -397,6 +404,7 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
                                                                                   .addHeader("X-M2M-Origin", "admin:admin")
                                                                                   .addHeader("Content-Type", "application/json")
                                                                                   .execute().returnResponse();
+
             org.apache.http.HttpEntity httpEntity = operationResponse.getEntity();
             Integer status = operationResponse.getStatusLine().getStatusCode();
             String reason = operationResponse.getStatusLine().getReasonPhrase();
@@ -405,7 +413,7 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
             LOGGER.debug("Operation: status {}, reason {} content {}", status, reason, content);
 
         } catch (Exception e) {
-            LOGGER.error("Error while writing to {}, operation {}, payload {}", deviceAddress, profile.get("operation"), new String(payload));
+            LOGGER.error("Error while writing to {}, operation {}, payload {}", deviceAddress, profile.get("operation"), new String(payload), e);
         }
     }
 
@@ -424,11 +432,8 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
         return converter;
     }
 
-    public JsonNode getOperationInstance(Thing thing) throws IOException {
+    public JsonNode getOperationInstance(Thing thing, String ipeName) throws IOException {
         //fixme this making of operation URL is risky
-        String ipeName = thing.getAdditionalProperties().get("ipeName");
-
-        ipeName = ipeName == null || ipeName.isEmpty() ? "fake" : ipeName;
         String operationURL = "http://localhost:8181/~/middle-node/middle-node/" + ipeName + "/thing_" + thing.getId() + "/operations/la";
 
         HttpResponse response = org.apache.http.client.fluent.Request.Get(operationURL)
