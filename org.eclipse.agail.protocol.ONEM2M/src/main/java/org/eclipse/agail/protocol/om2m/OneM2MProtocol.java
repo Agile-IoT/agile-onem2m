@@ -21,7 +21,21 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import embedded_libs.com.google.common.base.Strings;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.ParseException;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.fluent.Content;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.entity.ByteArrayEntity;
+import org.apache.http.entity.ContentType;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.util.EntityUtils;
 import org.cfg4j.source.system.EnvironmentVariablesConfigurationSource;
 import org.cfg4j.source.system.SystemPropertiesConfigurationSource;
 import org.eclipse.agail.Protocol;
@@ -37,6 +51,7 @@ import org.eclipse.agail.protocol.om2m.notification.NotificationVerificationRequ
 import org.eclipse.agail.protocol.om2m.utils.Request;
 import org.eclipse.agail.protocol.om2m.utils.Response;
 import org.eclipse.agail.protocol.om2m.utils.StringUtils;
+import org.eclipse.om2m.commons.obix.Int;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +61,9 @@ import com.srcsolution.things.interworking.data.Thing;
 import com.srcsolution.things.interworking.data.Topic;
 import com.srcsolution.things.interworking.mapper.*;
 import com.srcsolution.things.interworking.mapper.content.ContentConverter;
+import com.srcsolution.things.interworking.mapper.content.JsonContentConverter;
+import com.srcsolution.things.interworking.mapper.content.ObixContentConverter;
+import com.srcsolution.things.interworking.mapper.content.OperationContent;
 import com.srcsolution.things.onem2m_client.Resource;
 import com.srcsolution.things.onem2m_client.ResourceException;
 import com.srcsolution.things.onem2m_client.ResourceFactory;
@@ -58,6 +76,16 @@ import com.srcsolution.things.onem2m_client.resource.CseBase;
 public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
 
     private final Logger LOGGER = LoggerFactory.getLogger(OneM2MProtocol.class);
+
+    /**
+     * DBus bus name for the protocol manager
+     */
+    private static final String AGILE_PROTOCOL_MANAGER_BUS_NAME = "org.eclipse.agail.ProtocolManager";
+
+    /**
+     * DBus bus path for the protocol manager
+     */
+    private static final String AGILE_PROTOCOL_MANAGER_BUS_PATH = "/org/eclipse/agail/ProtocolManager";
 
     private static final String AGILE_ONEM2M_PROTOCOL_BUS_NAME = "org.eclipse.agail.protocol.ONEM2M";
 
@@ -110,13 +138,21 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
 
     private SubscriptionService subscriptionService;
 
-    public Set<String> thingsConnected;
+    public static Set<String> thingsConnected;
 
-    public Set<String> thingsSubscribed;
+    public static Set<String> thingsSubscribed;
 
-    public Map<String, ResourceMapper> resourceMappersByApplicationId;
+    public static Map<String, ResourceMapper> resourceMappersByApplicationId = null;
 
-    public Map<String, String> resourceMapperIdByDeviceAddress;
+    public static Map<String, String> resourceMapperIdByDeviceAddress;
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private ProtocolManager protocolManager;
+
+    private ResourceFactory resourceFactory;
+
+    private ZonedDateTime latestRecordDate = null;
 
     private static int counter = 0;
 
@@ -126,16 +162,20 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
 
     public OneM2MProtocol() {
         try {
-            dbusConnect(AGILE_ONEM2M_PROTOCOL_BUS_NAME, AGILE_ONEM2M_PROTOCOL_BUS_PATH, this);
-            this.resourceMappersByApplicationId = new HashMap<>();
-            this.resourceMapperIdByDeviceAddress = new HashMap<>();
-            this.properties = this.initProperties();
-            this.subscriptionService = new SubscriptionService();
-            this.initProtocol(new HttpResourceFactory(getProperties().getRemoteNode()));
-            this.initDevices();
-            LOGGER.debug("{} devices found", this.deviceList.size());
-            this.thingsConnected = new HashSet<>();
-            this.thingsSubscribed = new HashSet<>();
+            if (resourceMappersByApplicationId == null) {
+                dbusConnect(AGILE_ONEM2M_PROTOCOL_BUS_NAME, AGILE_ONEM2M_PROTOCOL_BUS_PATH, this);
+                resourceMappersByApplicationId = new HashMap<>();
+                resourceMapperIdByDeviceAddress = new HashMap<>();
+                this.properties = this.initProperties();
+                this.subscriptionService = new SubscriptionService();
+                this.resourceFactory = new HttpResourceFactory(getProperties().getRemoteNode());
+                this.registerProtocol();
+                this.initProtocol();
+                this.initDevices();
+                LOGGER.debug("{} devices found", this.deviceList.size());
+                thingsConnected = new HashSet<>();
+                thingsSubscribed = new HashSet<>();
+            }
         } catch (Exception e) {
             LOGGER.error("Error whe instantiating om2m protocol", e);
         }
@@ -163,7 +203,7 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
         return properties;
     }
 
-    private void initProtocol(ResourceFactory resourceFactory) {
+    private void initProtocol() {
         if (StringUtils.isEmpty(getName())) {
             throw new IllegalArgumentException("Name must be not empty");
         }
@@ -199,12 +239,25 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
                     LOGGER.warn("Error while sleeping", ee);
                 }
                 LOGGER.warn("Request error: {}, trying again in main...", e.getMessage(), e);
-                initProtocol(resourceFactory);
+                initProtocol();
             } else {
                 throw new ResourceException("Request error: " + e.getMessage(), e, 0);
             }
         }
 
+    }
+
+    private void registerProtocol() {
+        try {
+            LOGGER.info("Protocol registration: getting protocol manager");
+            protocolManager = (ProtocolManager) connection.getRemoteObject(AGILE_PROTOCOL_MANAGER_BUS_NAME, AGILE_PROTOCOL_MANAGER_BUS_PATH, ProtocolManager.class);
+            LOGGER.info("Protocol registration: adding {}", AGILE_ONEM2M_PROTOCOL_BUS_NAME);
+            protocolManager.Add(AGILE_ONEM2M_PROTOCOL_BUS_NAME);
+            LOGGER.info("Protocol registration: {} added!", AGILE_ONEM2M_PROTOCOL_BUS_NAME);
+
+        } catch (Exception e) {
+            LOGGER.warn("Error while getting protocol manager or while registering protocol", e);
+        }
     }
 
     private void initDevices() {
@@ -214,18 +267,21 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
             LOGGER.warn("Error while sleeping", ee);
         }
 
-        this.resourceMappersByApplicationId.forEach((id, resourceMapper) -> {
+        resourceMappersByApplicationId.forEach((id, resourceMapper) -> {
             Map<String, Thing> thingsDataMap = this.retrieveOm2mThings(resourceMapper.getReader());
             LOGGER.debug("{} things data found", thingsDataMap.size());
             thingsDataMap.forEach((key, thing) -> {
                 resourceMapperIdByDeviceAddress.put(thing.getId(), id);
-                DeviceOverview deviceOverview = new DeviceOverview(thing.getId(), AGILE_ONEM2M_PROTOCOL_BUS_NAME, thing.getName(), CONNECTED);
+                //                DeviceOverview deviceOverview = new DeviceOverview(thing.getId(), AGILE_ONEM2M_PROTOCOL_BUS_NAME, thing.getConnectivity().getNetworkType(), CONNECTED);
+                //TEST:
+                DeviceOverview deviceOverview = new DeviceOverview(thing.getId(), AGILE_ONEM2M_PROTOCOL_BUS_NAME, "DALI", CONNECTED);
+
                 if (isNewDevice(deviceOverview)) {
                     deviceList.add(deviceOverview);
                     try {
                         ProtocolManager.FoundNewDeviceSignal foundNewDevSig = new ProtocolManager.FoundNewDeviceSignal(AGILE_NEW_DEVICE_SIGNAL_PATH, deviceOverview);
                         connection.sendSignal(foundNewDevSig);
-                        LOGGER.error("Creation signal sent!");
+                        LOGGER.debug("Creation signal sent!");
                     } catch (DBusException e) {
                         LOGGER.error("Error sending creation signal", e);
                     }
@@ -270,14 +326,14 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
 
     @Override
     public void Connect(String deviceAddress) throws DBusException {
-        String resourceMapperApplicationId = this.resourceMapperIdByDeviceAddress.get(deviceAddress);
-        ResourceMapper resourceMapper = this.resourceMappersByApplicationId.get(resourceMapperApplicationId);
+        String resourceMapperApplicationId = resourceMapperIdByDeviceAddress.get(deviceAddress);
+        ResourceMapper resourceMapper = resourceMappersByApplicationId.get(resourceMapperApplicationId);
         ThingResources thing = resourceMapper.getOrCreateThingResources(deviceAddress);
 
         if (thing == null) {
             LOGGER.debug("Device not connected {}", deviceAddress);
         } else {
-            this.thingsConnected.add(deviceAddress);
+            thingsConnected.add(deviceAddress);
             LOGGER.debug("Device connected {}", deviceAddress);
         }
 
@@ -285,7 +341,7 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
 
     @Override
     public void Disconnect(String deviceAddress) throws DBusException {
-        this.thingsConnected.remove(deviceAddress);
+        thingsConnected.remove(deviceAddress);
         LOGGER.debug("Device disconnected {}", deviceAddress);
     }
 
@@ -311,6 +367,7 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
         LOGGER.info("Started discovery of om2M devices");
         Runnable task = () -> {
             LOGGER.debug("Checking for new devices");
+            this.initProtocol();
             this.initDevices();
         };
         discoveryFuture = executor.scheduleWithFixedDelay(task, 0, 5, TimeUnit.SECONDS);
@@ -327,27 +384,81 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
     @Override
     public void Write(String deviceAddress, Map<String, String> profile, byte[] payload) throws DBusException {
         Thing thing = new Thing();
-        Topic payloadTopic = new Topic("payload");
-        String resourceMapperApplicationId = this.resourceMapperIdByDeviceAddress.get(deviceAddress);
-        ResourceMapper resourceMapper = this.resourceMappersByApplicationId.get(resourceMapperApplicationId);
+        try {
+            JsonNode operationInstance = this.getOperationInstance(thing);
+            ContentConverter converter = this.getContentConverter(operationInstance);
+            Map<String, Object> con = converter.deserialize(operationInstance.get("con").asText());
+            OperationContent operation = (OperationContent) con.get(profile.get("operation"));
+            URIBuilder url = new URIBuilder("http://localhost:8181/~/middle-node/middle-node/" + operation.getUrl());
 
-        payloadTopic.getMessages().add(new Message(ZonedDateTime.now(), new String(payload), payloadTopic));
-        thing.setId(deviceAddress);
-        thing.getTopics().add(payloadTopic);
+            LOGGER.debug("Operation URL: {}", url.toString());
+            url.addParameter("level", Integer.parseInt(new String(payload)) + "");
+            HttpResponse operationResponse = org.apache.http.client.fluent.Request.Post(url.toString())
+                                                                                  .addHeader("X-M2M-Origin", "admin:admin")
+                                                                                  .addHeader("Content-Type", "application/json")
+                                                                                  .execute().returnResponse();
+            org.apache.http.HttpEntity httpEntity = operationResponse.getEntity();
+            Integer status = operationResponse.getStatusLine().getStatusCode();
+            String reason = operationResponse.getStatusLine().getReasonPhrase();
+            String content = new Content(EntityUtils.toByteArray(httpEntity), ContentType.getOrDefault(httpEntity)).asString();
 
-        resourceMapper.write(thing);
+            LOGGER.debug("Operation: status {}, reason {} content {}", status, reason, content);
+
+        } catch (Exception e) {
+            LOGGER.error("Error while writing to {}, operation {}, payload {}", deviceAddress, profile.get("operation"), new String(payload));
+        }
+    }
+
+    public ContentConverter getContentConverter(JsonNode operationInstance)
+            throws ParseException, IOException {
+        String cnf = operationInstance.get("cnf").asText().toLowerCase();
+        ContentConverter converter;
+
+        if (cnf.contains("obix")) {
+            converter = new ObixContentConverter();
+        } else if (cnf.contains("json")) {
+            converter = new JsonContentConverter();
+        } else {
+            throw new ParseException("No converter for the cnf (" + cnf + ") of the operation. Only OBIX and JSON are currently supported.");
+        }
+        return converter;
+    }
+
+    public JsonNode getOperationInstance(Thing thing) throws IOException {
+        //fixme this making of operation URL is risky
+        String ipeName = thing.getAdditionalProperties().get("ipeName");
+
+        ipeName = ipeName == null || ipeName.isEmpty() ? "fake" : ipeName;
+        String operationURL = "http://localhost:8181/~/middle-node/middle-node/" + ipeName + "/thing_" + thing.getId() + "/operations/la";
+
+        HttpResponse response = org.apache.http.client.fluent.Request.Get(operationURL)
+                                                                     .addHeader("X-M2M-Origin", "admin:admin")
+                                                                     .addHeader("Content-Type", "application/json;ty=4")
+                                                                     .execute().returnResponse();
+
+        HttpEntity httpEntity = response.getEntity();
+        Content content = new Content(EntityUtils.toByteArray(httpEntity), ContentType.getOrDefault(httpEntity));
+        LOGGER.debug("Operation URL: {}", operationURL);
+        return MAPPER.readTree(content.asString()).get("m2m:cin");
     }
 
     @Override
     public byte[] Read(String deviceAddress, Map<String, String> profile) throws DBusException {
-        String resourceMapperApplicationId = this.resourceMapperIdByDeviceAddress.get(deviceAddress);
-        ResourceMapper resourceMapper = this.resourceMappersByApplicationId.get(resourceMapperApplicationId);
+        LOGGER.debug("Read deviceAddress: {}", deviceAddress);
+
+        String resourceMapperApplicationId = resourceMapperIdByDeviceAddress.get(deviceAddress);
+        LOGGER.debug("Read resourceMapperApplicationId: {}", resourceMapperApplicationId);
+        ResourceMapper resourceMapper = resourceMappersByApplicationId.get(resourceMapperApplicationId);
+        resourceMapper.getOrCreateThingResources(deviceAddress);
+
         Thing thing = resourceMapper.read(deviceAddress);
         byte[] record = null;
-
         if (thing != null) {
+            LOGGER.debug("Thing id {}", thing.getId());
+
             record = this.readThingLastMessage(thing);
             lastRecord = record;
+            LOGGER.info("Data read: {}", new String(record));
 
         } else {
             LOGGER.error("Device not found: {}", deviceAddress);
@@ -358,8 +469,12 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
 
     @Override
     public byte[] NotificationRead(String deviceAddress, Map<String, String> profile) throws DBusException {
+        LOGGER.debug("NotificationRead deviceAddress: {}", deviceAddress);
+
         try {
             String resourceMapperApplicationId = this.resourceMapperIdByDeviceAddress.get(deviceAddress);
+            LOGGER.debug("NotificationRead resourceMapperApplicationId: {}", resourceMapperApplicationId);
+
             ResourceMapper resourceMapper = this.resourceMappersByApplicationId.get(resourceMapperApplicationId);
             Thing thing = resourceMapper.read(deviceAddress);
             if (thing != null) {
@@ -376,18 +491,38 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
 
     @Override
     public void Subscribe(String deviceAddress, Map<String, String> profile) throws DBusException {
-        LOGGER.debug("Subscribing to {}....", deviceAddress);
+        /*LOGGER.debug("Subscribing to {}....", deviceAddress);
         String resourceMapperApplicationId = this.resourceMapperIdByDeviceAddress.get(deviceAddress);
         ResourceMapper resourceMapper = this.resourceMappersByApplicationId.get(resourceMapperApplicationId);
         this.subscriptionService.subscribeToThingResource(deviceAddress, resourceMapper.getOrCreateThingResources(deviceAddress));
         this.thingsSubscribed.add(deviceAddress);
-        LOGGER.debug("Subscribed to {}!", deviceAddress);
+        LOGGER.debug("Subscribed to {}!", deviceAddress);*/
+        if (subscriptionFuture == null) {
+            Runnable task = () -> {
+
+                try {
+                    lastRecord = this.Read(deviceAddress, profile);
+                    Protocol.NewRecordSignal newRecordSignal = new Protocol.NewRecordSignal(AGILE_NEW_RECORD_SIGNAL_PATH,
+                                                                                            lastRecord, deviceAddress, profile);
+                    LOGGER.debug("Notifying {}", this);
+                    connection.sendSignal(newRecordSignal);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            };
+            subscriptionFuture = executor.scheduleAtFixedRate(task, 0, 30, TimeUnit.SECONDS);
+        }
     }
 
     @Override
     public void Unsubscribe(String deviceAddress, Map<String, String> profile) throws DBusException {
-        if (this.thingsSubscribed.contains(deviceAddress)) {
+       /* if (this.thingsSubscribed.contains(deviceAddress)) {
             this.thingsSubscribed.remove(deviceAddress);
+            LOGGER.debug("Unsubscribed to {}!", deviceAddress);
+        }*/
+        if (subscriptionFuture != null) {
+            subscriptionFuture.cancel(true);
+            subscriptionFuture = null;
             LOGGER.debug("Unsubscribed to {}!", deviceAddress);
         }
     }
@@ -438,19 +573,13 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
         List<Topic> topics = thing.getTopics();
 
         for (Topic topic : topics) {
-            if (topic.getName().equalsIgnoreCase("payload")) {
-                ZonedDateTime latestMessage = null;
-                for (Message message : topic.getMessages()) {
-                    if (latestMessage == null || latestMessage.isBefore(message.getTimestamp())) {
-                        lastMessage = message.getPayload().getBytes();
-                        latestMessage = message.getTimestamp();
-                    }
-                }
+            for (Message message : topic.getMessages()) {
 
-                if (latestMessage == null) {
-                    lastMessage = null;
+                if (latestRecordDate == null || latestRecordDate.isBefore(message.getTimestamp())) {
+                    LOGGER.debug("Payload: {}, Time: {}, previous Latest: {}, latest", message.getPayload(), message.getTimestamp(), latestRecordDate, message.getTimestamp());
+                    lastMessage = message.getPayload().getBytes();
+                    latestRecordDate = message.getTimestamp();
                 }
-
             }
         }
 

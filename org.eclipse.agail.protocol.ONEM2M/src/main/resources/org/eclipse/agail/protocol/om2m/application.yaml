@@ -2,8 +2,8 @@ ipe:
 #  name: one-ipe
   keep_alive: 300  # in seconds
   resource: # related application oneM2M root resource
-    app_id: "central-node"
-    app_name: "central-node"
+    app_id: "middle-node"
+    app_name: "middle-node"
     poa: "http://localhost:8095/agile-om2m"
     content_info: application/json
     mapper:
@@ -16,7 +16,7 @@ ipe:
       port: 4395
   remote:   # remote oneM2M node to access (optional, standalone mode, no node)
     url: "http://localhost:8181"
-    id: "central-node"
+    id: "middle-node"
     login: "admin"
     password: "admin"
   device:   # device management
@@ -24,7 +24,7 @@ ipe:
     source: default   # default, fx30
     link: cse   # cse, ae
   log:  # logging details
-    level: DEBUG
+    level: INFO
     console: true
     path: ./logs
 #    file:

@@ -126,10 +126,50 @@ FROM $BASEIMAGE_DEPLOY
 WORKDIR /usr/src/app
 ENV APATH /usr/src/app
 
+RUN apt-get update && apt-get install --no-install-recommends -y \
+    build-essential \
+    git\
+    apt \
+    software-properties-common \
+    unzip \
+    cpp \
+    binutils \
+    gettext \
+    libc6-dev \
+    make \
+    cmake \
+    cmake-data \
+    pkg-config \
+    clang \
+    gcc-4.9 \
+    g++-4.9 \
+    qdbus \
+    autotools-dev \
+    autoconf \
+    libusb-1.0-0-dev \
+    pkg-config \
+    dpkg-dev \
+    debhelper \
+    python3 \
+    python3-setuptools \
+    python3-pip \
+    flex \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install pyusb
+
+RUN git clone git://github.com/onitake/daliserver.git
+RUN cd daliserver && autoreconf -i &&  dpkg-buildpackage
+RUN dpkg -i daliserver*.deb
+
+RUN git clone git://github.com/sde1000/python-dali.git
+RUN cd python-dali && python3 setup.py install
+
 
 COPY --from=0 $APATH/scripts scripts
 COPY --from=0 $APATH/om2m om2m
 COPY --from=0 $APATH/deps deps
 COPY --from=0 $APATH/org.eclipse.agail.protocol.ONEM2M org.eclipse.agail.protocol.ONEM2M
 RUN pkill -f org.eclipse.equinox.launcher
+
 CMD [ "bash", "/usr/src/app/scripts/start.sh" ]

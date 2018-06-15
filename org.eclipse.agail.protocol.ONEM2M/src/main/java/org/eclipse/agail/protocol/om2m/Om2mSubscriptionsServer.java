@@ -18,11 +18,11 @@ import org.slf4j.LoggerFactory;
 
 public class Om2mSubscriptionsServer {
 
-    private final Logger LOGGER = LoggerFactory.getLogger(Om2mSubscriptionsServer.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(Om2mSubscriptionsServer.class);
 
-    private HttpServlet httpServlet;
+    private static HttpServlet httpServlet;
 
-    protected void startServer(OneM2MProtocol oneM2MProtocol, int httpPort, String path, String resourceId) throws Exception {
+    static void startServer(OneM2MProtocol oneM2MProtocol, int httpPort, String path, String resourceId) throws Exception {
         Server server = new Server();
 
         server.setConnectors(new Connector[] {createConnector(httpPort)});
@@ -44,7 +44,7 @@ public class Om2mSubscriptionsServer {
         }
     }
 
-    protected final HttpServlet initHttpServlet(OneM2MProtocol oneM2MProtocol, String resourceId) {
+    protected static final HttpServlet initHttpServlet(OneM2MProtocol oneM2MProtocol, String resourceId) {
         if (httpServlet == null) {
 
             httpServlet = new HttpServlet() {
@@ -58,7 +58,7 @@ public class Om2mSubscriptionsServer {
         return httpServlet;
     }
 
-    private Connector createConnector(int port) {
+    private static Connector createConnector(int port) {
         Connector connector = new SelectChannelConnector();
         connector.setPort(port);
 
