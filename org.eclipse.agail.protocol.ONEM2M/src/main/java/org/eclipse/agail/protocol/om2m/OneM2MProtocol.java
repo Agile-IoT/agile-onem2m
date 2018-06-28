@@ -272,9 +272,7 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
             LOGGER.debug("{} things data found", thingsDataMap.size());
             thingsDataMap.forEach((key, thing) -> {
                 resourceMapperIdByDeviceAddress.put(thing.getId(), id);
-                //                DeviceOverview deviceOverview = new DeviceOverview(thing.getId(), AGILE_ONEM2M_PROTOCOL_BUS_NAME, thing.getConnectivity().getNetworkType(), CONNECTED);
-                //TEST:
-                DeviceOverview deviceOverview = new DeviceOverview(thing.getId(), AGILE_ONEM2M_PROTOCOL_BUS_NAME, "DALI", CONNECTED);
+                DeviceOverview deviceOverview = new DeviceOverview(thing.getId(), AGILE_ONEM2M_PROTOCOL_BUS_NAME, thing.getConnectivity().getNetworkType(), CONNECTED);
 
                 if (isNewDevice(deviceOverview)) {
                     deviceList.add(deviceOverview);
@@ -388,6 +386,17 @@ public class OneM2MProtocol extends AbstractAgileObject implements Protocol {
         Thing thing = resourceMapper.read(deviceAddress);
 
         try {
+            for (int i = 0; thing == null && i < 5; i++) {
+                Thread.sleep(500);
+                thing = resourceMapper.read(deviceAddress);
+            }
+
+            if (thing == null) {
+                resourceMapper.getOrCreateThingResources(deviceAddress);
+                Thread.sleep(500);
+                thing = resourceMapper.read(deviceAddress);
+            }
+
             String ipeName = profile.get("ipe");
             ipeName = ipeName == null || ipeName.isEmpty() ? "fake" : ipeName;
 
